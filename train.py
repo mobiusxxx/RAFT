@@ -18,6 +18,7 @@ from torch.utils.data import DataLoader
 from raft import RAFT
 import evaluate
 import datasets
+import tqdm
 
 from torch.utils.tensorboard import SummaryWriter
 
@@ -84,7 +85,8 @@ def fetch_optimizer(args, model):
         pct_start=0.05, cycle_momentum=False, anneal_strategy='linear')
 
     return optimizer, scheduler
-    
+
+
 
 class Logger:
     def __init__(self, model, scheduler):
@@ -134,12 +136,21 @@ class Logger:
 
 
 def train(args):
-
     model = nn.DataParallel(RAFT(args), device_ids=args.gpus)
     print("Parameter Count: %d" % count_parameters(model))
 
     if args.restore_ckpt is not None:
         model.load_state_dict(torch.load(args.restore_ckpt), strict=False)
+        #使用与训练权重
+        # model_dict = model.state_dict()
+        # pretrained_dict = torch.load(args.restore_ckpt)
+        # pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and v.size() == model_dict[k].size()}
+        # if args.replknet is not None:
+        #     pretrained_dict2 = torch.load(args.replknet)
+        #     pretrained_dict2 = {k: v for k, v in pretrained_dict2.items() if k in model_dict and v.size() == model_dict[k].size()}
+        # model_dict.update(pretrained_dict)
+        # model_dict.update(pretrained_dict2)
+        # model.load_state_dict(model_dict)
 
     model.cuda()
     model.train()
@@ -194,6 +205,10 @@ def train(args):
                         results.update(evaluate.validate_sintel(model.module))
                     elif val_dataset == 'kitti':
                         results.update(evaluate.validate_kitti(model.module))
+                    elif val_dataset == 'self':                 
+                        results.update(evaluate.validate_self(model.module))
+                    else:
+                        results.update(evaluate.validate_LSPIV(model.module))
 
                 logger.write_dict(results)
                 
@@ -216,17 +231,17 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name', default='raft', help="name your experiment")
-    parser.add_argument('--stage', help="determines which dataset to use for training") 
-    parser.add_argument('--restore_ckpt', help="restore checkpoint")
+    parser.add_argument('--name', default='FlowRAFT-LSPIV-hehai', help="name your experiment")
+    parser.add_argument('--stage', default='LSPIV',help="determines which dataset to use for training") 
+    parser.add_argument('--restore_ckpt',default=r"F:/weights/RAFT_change/FlowRAFT-sintel.pth", help="restore checkpoint")
     parser.add_argument('--small', action='store_true', help='use small model')
-    parser.add_argument('--validation', type=str, nargs='+')
+    parser.add_argument('--validation', default='LSPIV' , type=str, nargs='+')
 
     parser.add_argument('--lr', type=float, default=0.00002)
     parser.add_argument('--num_steps', type=int, default=100000)
     parser.add_argument('--batch_size', type=int, default=6)
-    parser.add_argument('--image_size', type=int, nargs='+', default=[384, 512])
-    parser.add_argument('--gpus', type=int, nargs='+', default=[0,1])
+    parser.add_argument('--image_size', type=int, nargs='+', default=[288,512])
+    parser.add_argument('--gpus', type=int, nargs='+', default=[0])
     parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
 
     parser.add_argument('--iters', type=int, default=12)

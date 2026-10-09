@@ -122,9 +122,9 @@ def writeFlowKITTI(filename, uv):
 
 def read_gen(file_name, pil=False):
     ext = splitext(file_name)[-1]
-    if ext == '.png' or ext == '.jpeg' or ext == '.ppm' or ext == '.jpg':
+    if ext == '.png' or ext == '.jpeg' or ext == '.ppm' or ext == '.jpg' or ext == '.pgm' or ext == '.gif':
         return Image.open(file_name)
-    elif ext == '.bin' or ext == '.raw':
+    elif ext == '.bin' or ext == '.raw' or ext == '.npy':
         return np.load(file_name)
     elif ext == '.flo':
         return readFlow(file_name).astype(np.float32)

@@ -55,7 +55,51 @@ class ResidualBlock(nn.Module):
 
         return self.relu(x+y)
 
+class Flow_Attention(nn.Module):
+    def __init__(self, dim, num_heads=16):
+        super().__init__()
+        self.dim = dim
+        self.num_heads = num_heads
+        self.qkv = nn.Linear(dim, dim * 3, bias=True)
+        self.proj = nn.Linear(dim, dim)
+        self.softmax = nn.Softmax(dim=-1)
 
+    def kernel(self, x):
+        x = torch.sigmoid(x)
+        return x
+
+    def my_sum(self, a, b):
+        # "nhld,nhd->nhl"
+        return torch.sum(a * b[:, :, None, :], dim=-1)
+
+    def forward(self, x):
+        is_list = isinstance(x, tuple) or isinstance(x, list)
+        if is_list:
+            batch_dim = x[0].shape[0]
+            x = torch.cat(x, dim=0)
+        B_, N, C = x.shape #4,4800,256
+        qkv = self.qkv(x).reshape(B_, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2] #4,16,4800,16
+        # kernel
+        q, k = self.kernel(q), self.kernel(k)
+        # normalizer
+        sink_incoming = 1.0 / (self.my_sum(q + 1e-6, k.sum(dim=2) + 1e-6) + 1e-6)
+        source_outgoing = 1.0 / (self.my_sum(k + 1e-6, q.sum(dim=2) + 1e-6) + 1e-6)
+        conserved_sink = self.my_sum(q + 1e-6, (k * source_outgoing[:, :, :, None]).sum(dim=2) + 1e-6) + 1e-6
+        conserved_source = self.my_sum(k + 1e-6, (q * sink_incoming[:, :, :, None]).sum(dim=2) + 1e-6) + 1e-6
+        conserved_source = torch.clamp(conserved_source, min=-1.0, max=1.0)  # for stability
+        # allocation
+        sink_allocation = torch.sigmoid(conserved_sink * (float(q.shape[2]) / float(k.shape[2])))
+        # competition
+        source_competition = torch.softmax(conserved_source, dim=-1) * float(k.shape[2])
+        # multiply
+        kv = k.transpose(-2, -1) @ (v * source_competition[:, :, :, None])
+        x_update = ((q @ kv) * sink_incoming[:, :, :, None]) * sink_allocation[:, :, :, None]
+        x = (x_update).transpose(1, 2).reshape(B_, N, C)
+        x = self.proj(x)
+        if is_list:
+            x = torch.split(x, [batch_dim, batch_dim], dim=0)
+        return x
 
 class BottleneckBlock(nn.Module):
     def __init__(self, in_planes, planes, norm_fn='group', stride=1):

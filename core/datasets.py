@@ -97,10 +97,43 @@ class FlowDataset(data.Dataset):
         
     def __len__(self):
         return len(self.image_list)
-        
+
+class realflow(FlowDataset):
+    def __init__(self, aug_params=None, split='training',root = 'F:/datasets/water_datasets/create_data'):
+        super().__init__(aug_params)
+        root = osp.join(root, split)
+        if split == 'testing':
+            self.is_test = True
+
+        images1 = sorted(glob(osp.join(root, 'img1/*.png')))
+        images2 = sorted(glob(osp.join(root, 'img2/*.png')))
+
+        for img1, img2 in zip(images1, images2):
+            frame_id = img1.split('/')[-1]
+            self.extra_info += [ [frame_id] ]
+            self.image_list += [ [img1, img2] ]
+
+        if split != 'test':
+            self.flow_list = sorted(glob(osp.join(root, 'flow/*.flo')))
+
+class LSPIV(FlowDataset):
+    def __init__(self, aug_params=None, split='training',root = 'G:/datasets/hehai_dataset'):
+        super().__init__(aug_params)
+        root = osp.join(root, split)
+        if split == 'testing':
+            self.is_test = True
+
+        image_list = sorted(glob(osp.join(root, 'img/*.gif')))
+
+        for i in range(len(image_list)-1):
+            self.image_list += [ [image_list[i], image_list[i+1]] ]
+            self.extra_info += [ [i] ] # scene and frame_id
+
+        if split != 'test':
+            self.flow_list = sorted(glob(osp.join(root, 'flow/*.flo')))
 
 class MpiSintel(FlowDataset):
-    def __init__(self, aug_params=None, split='training', root='datasets/Sintel', dstype='clean'):
+    def __init__(self, aug_params=None, split='training', root='F:/datasets/water_datasets/MPI-Sintel', dstype='clean'):
         super(MpiSintel, self).__init__(aug_params)
         flow_root = osp.join(root, split, 'flow')
         image_root = osp.join(root, split, dstype)
@@ -119,7 +152,7 @@ class MpiSintel(FlowDataset):
 
 
 class FlyingChairs(FlowDataset):
-    def __init__(self, aug_params=None, split='train', root='datasets/FlyingChairs_release/data'):
+    def __init__(self, aug_params=None, split='train', root='G:/datasets/FlyingChairs/FlyingChairs_release/data'):
         super(FlyingChairs, self).__init__(aug_params)
 
         images = sorted(glob(osp.join(root, '*.ppm')))
@@ -135,7 +168,7 @@ class FlyingChairs(FlowDataset):
 
 
 class FlyingThings3D(FlowDataset):
-    def __init__(self, aug_params=None, root='datasets/FlyingThings3D', dstype='frames_cleanpass'):
+    def __init__(self, aug_params=None, root='G:/datasets/FlyingThings3D', dstype='frames_cleanpass'):
         super(FlyingThings3D, self).__init__(aug_params)
 
         for cam in ['left']:
@@ -159,7 +192,7 @@ class FlyingThings3D(FlowDataset):
       
 
 class KITTI(FlowDataset):
-    def __init__(self, aug_params=None, split='training', root='datasets/KITTI'):
+    def __init__(self, aug_params=None, split='training', root='G:/datasets/KITTI'):
         super(KITTI, self).__init__(aug_params, sparse=True)
         if split == 'testing':
             self.is_test = True
@@ -169,7 +202,7 @@ class KITTI(FlowDataset):
         images2 = sorted(glob(osp.join(root, 'image_2/*_11.png')))
 
         for img1, img2 in zip(images1, images2):
-            frame_id = img1.split('/')[-1]
+            frame_id = img1.split('\\')[-1]
             self.extra_info += [ [frame_id] ]
             self.image_list += [ [img1, img2] ]
 
@@ -178,7 +211,7 @@ class KITTI(FlowDataset):
 
 
 class HD1K(FlowDataset):
-    def __init__(self, aug_params=None, root='datasets/HD1k'):
+    def __init__(self, aug_params=None, root='G:/datasets/HD1k'):
         super(HD1K, self).__init__(aug_params, sparse=True)
 
         seq_ix = 0
@@ -226,6 +259,14 @@ def fetch_dataloader(args, TRAIN_DS='C+T+K+S+H'):
     elif args.stage == 'kitti':
         aug_params = {'crop_size': args.image_size, 'min_scale': -0.2, 'max_scale': 0.4, 'do_flip': False}
         train_dataset = KITTI(aug_params, split='training')
+
+    elif args.stage == 'self':
+        aug_params = {'crop_size': args.image_size, 'min_scale': -0.2, 'max_scale': 0.2, 'do_flip': True}
+        train_dataset = realflow(aug_params,split='training')
+    
+    elif args.stage == 'LSPIV':
+        aug_params = {'crop_size': args.image_size, 'min_scale': -0.2, 'max_scale': 0.2, 'do_flip': True}
+        train_dataset = 10*LSPIV(aug_params,split='training') 
 
     train_loader = data.DataLoader(train_dataset, batch_size=args.batch_size, 
         pin_memory=False, shuffle=True, num_workers=4, drop_last=True)
